@@ -1,0 +1,476 @@
+---
+title: "GRUPO09 PC3_12"
+author: "Gamonal Conde Alex, Honorato Tasayco Deybi, Delgado Campusano Giandhell, Peña Anyeli, Rincon Deyner"
+format: html
+editor: visual
+---
+
+## ANÁLISIS UNIVARIADO Y MULTIVARIADO EN UNA REGRESIÓN LOGÍSTICA
+
+PRIMERO CARGAR LOS PAQUETES:
+
+```{r}
+install.packages("performance")
+```
+
+```{r}
+library(tidyverse)
+library(here)
+library(rio)
+library(gtsummary)
+library(car)
+library(survival)
+library(performance)
+```
+
+### **1.- EL DATASET PARA ESTE EJERCICIO**
+
+Para ilustrar el proceso de análisis multivariado en un modelo de regresión logística, se empleará el dataset `data_diabetes`. Este conjunto de datos incluye información de 768 pacientes diagnosticados con diabetes. Las variables registradas comprenden el numero de embarazos, glucosa en 2h, presión sanguínea, pliegue de triceps, insulina en 2h, entre otras variables de relevancia clínica.
+
+Primero importamos data diabetes
+
+```{r}
+data_diabetes <- import(here("data", "diabetes.csv"))
+```
+
+Un vistazo a los datos
+
+```{r}
+head(data_diabetes)
+```
+
+### **2.- EL ANALISIS UNIVARIADO**
+
+En esta sección se estimarán los Odds Ratios (OR) de cada variable de manera independiente, es decir, sin ajuste por otras covariables.
+
+Antes de realizar este análisis, es necesario definir las categorías de referencia para las variables categóricas mediante la función `mutate()` en combinación con `relevel()`. Este paso asegura que la interpretación de los OR se haga en relación con la categoría de referencia seleccionada. El resultado se guarda en un nuevo objeto llamado `data_diabetes_1`.
+
+```{r}
+data_diabetes_1 <- data_diabetes |> 
+  mutate(diabetes_5a = relevel(as.factor(diabetes_5a), ref = "negativo")) |> 
+  na.omit()
+```
+
+Para obtener la tabla con los resultados del análisis univariado, se utiliza la función `tbl_uvregression()`, que permite generar tablas con las estimaciones de regresión logística para cada variable incluida. Entre sus argumentos se especifican el método de regresión, las variables a analizar, la familia de distribución (binomial para modelos logísticos), y opciones de presentación de los resultados como los intervalos de confianza, valores p y formato de los estimadores.
+
+Se tuvo que cargar tambien los siguientes paquetes, muy aparte de los que se cargó anteriormente para que pueda salir bien la tabla:
+
+```{r}
+library(broom.helpers)  
+library(cardx) 
+```
+
+```{r}
+tabla_reg_log_univ <- data_diabetes_1 |>
+  tbl_uvregression(
+    include = c(num_embarazos, glucosa_2h, presion_sanguinea, pliegue_triceps, insulina_2h,
+                imc, historial_diabetes,edad),
+    y = diabetes_5a,
+    method = glm,
+    method.args = list(family = binomial),
+    exponentiate = TRUE,
+    conf.int = TRUE,
+    hide_n = TRUE,
+    add_estimate_to_reference_rows = FALSE,
+    pvalue_fun = ~ style_pvalue(.x, digits = 3),
+    estimate_fun = ~ style_number(.x, digits = 2),
+    label = list(
+      num_embarazos ~ "Numero de embarazos",
+      glucosa_2h ~ "Glucosa cada 2 horas",
+      presion_sanguinea ~ "Presión sanguínea (mmHg)",
+      pliegue_triceps ~ "Pliegue de triceps",
+      insulina_2h ~ "Insulina cada 2 horas",
+      imc ~ "IMC",
+      historial_diabetes ~ "Historial de diabetes",
+      edad ~ "Edad (años)"
+    )
+  ) |>
+  bold_labels() |>
+  bold_p(t = 0.05) |>
+  modify_header(estimate = "**OR no ajustado**", p.value = "**Valor P**")
+```
+
+En esta tabla, los resultados se expresan como odds ratios no ajustados (OR) con sus respectivos intervalos de confianza al 95% y valores p.
+
+```{r}
+tabla_reg_log_univ 
+```
+
+**INTERPRETACIÓN:**
+
+Para la interpretación de las variables categóricas, se revisó los conceptos abordados en la Sesión 10, donde se explicó en detalle cómo interpretar los OR en este tipo de variables.
+
+Un odds ratio (OR) te dice cómo cambia la probabilidad de diabetes a los 5 años cuando cambia una variable:
+
+-   **OR \> 1** → Mayor riesgo (mayor probabilidad del desenlace)
+
+-   **OR \< 1** → Menor riesgo (efecto protector)
+
+-   **OR = 1** → Sin asociación
+
+Cuando una variable numérica tiene OR \> 1, significa que por cada unidad que aumenta esa variable, también aumentan las *odds* de diabetes a los 5 años
+
+### **I. Numero de embarazos**
+
+-   **OR = 1.18** (IC 95%: 1.11–1.27, p \< 0.001)
+    -   Por cada embarazo adicional, las probabilidades (*odds*) de desarrollar diabetes aumentan en **18%**, manteniendo constante el resto de variables.
+
+### **II. Glucosa cada 2 horas**
+
+-   **OR = 1.04** (IC 95%: 1.03–1.05, p \< 0.001)
+
+    -   Cada incremento de 1 mg/dL en los niveles de glucosa a las 2 horas se asocia con un aumento del **4%** en las odds de desarrollar diabetes.
+
+### **III. Presión sanguínea (mmHg)**
+
+-   **OR = 1.04** (IC 95%: 1.02–1.05, p \< 0.001)
+    -   Cada mmHg adicional en la presión sanguínea se asocia con un aumento del **4%** en las probabilidades (*odds*) de desarrollar diabetes.
+
+**Interpretación**:\
+Por cada mmHg más en presión sanguínea, las odds de diabetes aumentan en **4%**.
+
+### **IV. Pliegue de triceps**
+
+-   **OR = 1.06** (IC 95%: 1.03–1.08, p \< 0.001)
+    -   Cada milímetro adicional en el pliegue cutáneo del tríceps está asociado con un **6%** más de probabilidad de diabetes.
+
+### **V. Insulina cada 2 horas**
+
+-   **OR = 1.01** (IC 95%: 1.00–1.01, p \< 0.001)
+    -   Un aumento de una unidad en los niveles de insulina se asocia con un incremento del **1%** en las odds de diabetes. Aunque el efecto es pequeño, es estadísticamente significativo.
+
+### **VI. IMC**
+
+-   **OR = 1.09** (IC 95%: 1.06–1.13, p \< 0.001)
+    -   Cada punto adicional en el IMC se relaciona con un **9%** más de probabilidad de desarrollar diabetes.
+
+### **VII. Historial de diabetes**
+
+-   **OR = 3.60** (IC 95%: 1.93–7.02, p \< 0.001)
+    -   Las personas con antecedentes familiares de diabetes tienen **3.6 veces más probabilidades** de desarrollar la enfermedad en comparación con quienes no tienen historial.
+
+### VIII. **Edad**
+
+-   **OR = 1.08** (IC 95%: 1.05–1.10, p \< 0.001)
+
+    -   Cada año adicional de edad se asocia con un aumento del **8%** en las odds de desarrollar diabetes.
+
+**CONCLUSIÓN:** Todos los factores evaluados mostraron una asociación positiva y estadísticamente significativa con la probabilidad de desarrollar diabetes a los 5 años. El historial familiar de diabetes se destaca como el factor con mayor magnitud de asociación, mientras que variables como glucosa, IMC y edad también presentan contribuciones importantes.
+
+### **3.- EL ANÁLISIS MULTIVARIADO**
+
+Para el análisis de regresión logística multivariada, se aplicó una estrategia de selección automática de variables utilizando tres enfoques: eliminación hacia atrás (*backward elimination*), selección hacia adelante (*forward selection*) y selección paso a paso (*stepwise selection)*.
+
+**PASO 1: Ajuste del modelo inicial**
+
+Ajustamos un modelo de regresión logística binaria que incluya todas las variables candidatas
+
+```{r}
+var_modelo = glm(
+  diabetes_5a ~ num_embarazos + glucosa_2h + presion_sanguinea + pliegue_triceps + insulina_2h + 
+    imc + historial_diabetes + edad,
+  data = data_diabetes_1,
+  family = binomial(link = "logit")
+  )
+```
+
+**PASO 2A: Realizamos la selección de variables**
+
+Usando la técnica Eliminación hacia atrás (Backward elimination).
+
+```{r}
+multi_backward <- var_modelo |>
+  step(direction = "backward", trace = FALSE)
+```
+
+**PASO 2B: Realizamos la selección de variables**
+
+Usando la técnica Selección hacia adelante (Forward selection).
+
+```{r}
+multi_forward <- var_modelo |>
+  step(direction = "forward", trace = FALSE)
+```
+
+**PASO 3C: Realizamos la selección de variables**
+
+Usando la técnica Selección paso a paso (Stepwise selection).
+
+```{r}
+multi_stepwise <- var_modelo |>
+  step(direction = "both", trace = FALSE)
+```
+
+Los resultados de la selección de las variables para el modelo se han guardado en los objetos: multi_backward, multi_forward, y multi_stepwise. El siguiente paso es comparar los valores de AIC y la multicolinealidad entre las variables seleccionadas por cada uno de los modelos.
+
+**PASO 3: Estimados el AIC para los modelos**
+
+Podemos visualizar el AIC y cuáles variables han sido seleccionadas en cada modelo, usando la función summary.
+
+```{r}
+summary(multi_backward)
+```
+
+**INTERPRETACIÓN:**
+
+-   **Glucosa a las 2 horas:**
+
+    -   Por cada aumento de 1 mg/dL en glucosa, las odds de desarrollar diabetes aumentan en aproximadamente un **4%**.
+
+    -   Asociación estadísticamente significativa (**p \< 0.001**).
+
+-   **Índice de masa corporal (IMC):**
+
+    -   Por cada punto adicional de IMC, las odds de diabetes aumentan en **8%**.
+
+    -   Asociación significativa (**p \< 0.001**), lo que destaca el impacto del exceso de peso.
+
+-   **Historial de diabetes:**
+
+    -   Las personas con antecedentes familiares tienen **3.16 veces más probabilidades** de desarrollar diabetes en comparación con quienes no lo tienen.
+
+    -   Asociación significativa (**p = 0.0067**).
+
+<!-- -->
+
+-   **Edad:**
+
+    -   Por cada año adicional de edad, las odds aumentan en **3%**.
+
+    -   Asociación marginalmente significativa (**p ≈ 0.054**).
+
+<!-- -->
+
+-   **Número de embarazos:**
+
+    -   Aunque muestra una tendencia positiva (9% más de odds por cada embarazo), **no fue estadísticamente significativa** al ajustar por otras variables (**p = 0.127**).
+
+    -   Su efecto podría estar mediado por variables como edad o IMC.
+
+<!-- -->
+
+-   El modelo mostró una mejora considerable frente al modelo nulo (disminución en la devianza), con un AIC de **356.89**, lo que indica una buena capacidad explicativa.
+
+```{r}
+summary(multi_forward)
+```
+
+**INTERPRETACIÓN:**
+
+#### I. Variables con asociación **significativa**:
+
+-   **Glucosa a las 2 horas:**
+
+    -   Por cada incremento de 1 mg/dL, las *odds* de desarrollar diabetes aumentan en aproximadamente **3.8%**.
+
+    -   Asociación altamente significativa (**p \< 0.001**), confirmando su importancia como predictor.
+
+-   **Índice de masa corporal (IMC):**
+
+    -   Por cada punto adicional de IMC, las odds aumentan en **7.1%**.
+
+    -   Asociación estadísticamente significativa (**p = 0.0099**), lo que refuerza el rol del sobrepeso y la obesidad como factores de riesgo.
+
+-   **Historial de diabetes:**
+
+    -   Las personas con antecedentes familiares tienen **más del triple de probabilidades** de desarrollar diabetes respecto a quienes no lo tienen.
+
+    -   Asociación significativa (**p = 0.0076**).
+
+#### II. Variables con asociación **marginal** o **no significativa**:
+
+-   **Edad:**
+
+    -   Cada año adicional se asocia con un aumento aproximado del **3.4%** en las odds de diabetes.
+
+    -   Asociación **marginalmente significativa** (**p = 0.065**), cerca del umbral de 0.05.
+
+-   **Número de embarazos:**
+
+    -   Muestra una tendencia positiva, pero no significativa (**p = 0.138**). Su efecto puede estar influenciado por otras variables como edad o IMC.
+
+-   **Presión sanguínea:**
+
+    -   No se observa asociación significativa con diabetes (**p = 0.904**), sugiriendo que su efecto no es relevante al ajustar por las demás variables.
+
+-   **Pliegue del tríceps:**
+
+    -   No se encontró asociación significativa (**p = 0.511**).
+
+-   **Insulina a las 2 horas:**
+
+    -   No se asoció de manera significativa con el desenlace (**p = 0.528**), posiblemente por alta variabilidad o valores perdidos previos.
+
+```{r}
+summary(multi_stepwise)
+```
+
+**INTERPRETACIÓN:**
+
+#### I. Variables con asociación significativa:
+
+-   **Glucosa a las 2 horas**
+
+    -   Cada aumento de 1 mg/dL en glucosa se asocia con un incremento del **3.6%** en las *odds* de desarrollar diabetes.
+
+    -   Asociación altamente significativa (**p \< 0.001**).
+
+    -   Esto refuerza su utilidad clínica como predictor temprano del riesgo de diabetes.
+
+-   **Índice de masa corporal (IMC)**
+
+    -   Cada punto adicional en el IMC se relaciona con un aumento del **7.8%** en las *odds* de desarrollar diabetes.
+
+    -   Asociación significativa (**p \< 0.001**), lo que destaca el papel del sobrepeso y la obesidad como factores de riesgo.
+
+-   **Historial de diabetes**
+
+    -   Las personas con antecedentes familiares tienen **aproximadamente 3.16 veces más probabilidades** de desarrollar diabetes.
+
+    -   Asociación significativa (**p = 0.0067**), lo que subraya la importancia del componente hereditario.
+
+#### II. Variables con asociación marginal o no significativa:
+
+-   **Edad**
+
+    -   Por cada año adicional, las odds de desarrollar diabetes aumentan en un **3.4%**.
+
+    -   Esta variable mostró una **asociación marginalmente significativa** (**p = 0.053**), por lo que su inclusión dependerá del criterio clínico y del tamaño muestral.
+
+-   **Número de embarazos**
+
+```         
+-    Muestra una tendencia positiva: por cada embarazo adicional, las odds aumentan en **8.4%**, pero **no fue estadísticamente significativa** (**p = 0.127**).
+
+-    Su efecto podría estar mediado por otras variables como edad o IMC.
+```
+
+**CONCLUSIÓN:**
+
+Los modelos obtenidos mediante eliminación hacia atrás (*backward elimination*), selección hacia adelante (*forward selection*) y selección paso a paso (*stepwise selection*) condujeron al mismo modelo final, que incluyó las variables: número de embarazos, glucosa a las 2 horas, IMC, historial de diabetes y edad. Este modelo presentó un valor de AIC de **356.89**, lo que representa una mejora notable respecto al modelo nulo (AIC inicial = 498.10) y un buen ajuste general.
+
+A diferencia del modelo completo que incorporaba todas las variables clínicas disponibles (AIC = 362.02), el modelo reducido seleccionó únicamente aquellas con mayor contribución explicativa, logrando así un mejor equilibrio entre parsimonia y ajuste estadístico. En consecuencia, este modelo final puede considerarse más eficiente y clínicamente interpretable para predecir el riesgo de diabetes a los 5 años.
+
+**° EVALUACIÓN DE COLINEALIDAD:**
+
+Finalmente, evaluamos la colinealidad usando la función `check_collinearity()` del paquete `performance`.
+
+```{r}
+performance::check_collinearity(multi_backward, ci = NULL)
+```
+
+```{r}
+performance::check_collinearity(multi_forward, ci = NULL)
+```
+
+```{r}
+performance::check_collinearity(multi_stepwise, ci = NULL)
+```
+
+**°CONCLUSIÓN:**
+
+La evaluación de colinealidad realizada sobre los distintos modelos generados evidenció valores de **VIF bajos y tolerancias altas**, lo que indica una **baja multicolinealidad** entre las variables incluidas.
+
+Tanto los modelos seleccionados mediante eliminación hacia atrás (*backward elimination*) como paso a paso (*stepwise selection*) presentaron VIF ajustados cercanos a 1 para todas sus variables (rango de VIF ajustado: 1.01 a 1.37), lo que sugiere independencia entre los predictores. Este comportamiento es deseable, ya que contribuye a la estabilidad de las estimaciones y mejora la interpretabilidad del modelo.
+
+En contraste, el modelo completo generado por selección hacia adelante (*forward selection*) que incluyó un mayor número de variables mostró valores de VIF algo más elevados, particularmente para variables como **edad** (VIF = 1.97), **IMC** (VIF = 1.83) y **número de embarazos** (VIF = 1.89). Aunque estos valores siguen por debajo del umbral crítico (VIF \> 5), reflejan una **mayor redundancia entre algunos predictores**. No obstante, ninguna variable superó los niveles considerados problemáticos.
+
+Este patrón sugiere que la exclusión de variables como presión sanguínea, pliegue del tríceps e insulina en los modelos seleccionados por *backward* y *stepwise* no solo respondió a criterios de significancia estadística, sino también a la optimización del modelo en términos de colinealidad. En conjunto, los modelos reducidos no solo fueron más parsimoniosos, sino también más robustos desde el punto de vista multicolineal.
+
+**°MODELO FINAL:**
+
+Con base en los resultados de ajuste (AIC = 356.89) y la evaluación de colinealidad (VIF bajos y tolerancias altas), se concluye que el modelo óptimo es el obtenido mediante las técnicas de eliminación hacia atrás (*backward elimination*) y selección paso a paso (*stepwise selection*), ya que ambos condujeron exactamente al mismo conjunto de variables.
+
+El modelo final incluye un total de **cinco variables independientes**: número de embarazos, glucosa a las 2 horas, índice de masa corporal (IMC), historial de diabetes y edad. Estas variables serán reportadas y analizadas en detalle en el modelo multivariado definitivo.
+
+### 4.- REPORTE DEL ANÁLISIS UNIVARIADO Y MULTIVARIADO
+
+Como en las sesiones anteriores, reportaremos los resultados del modelo final de regresión logística.
+
+**I. Tabla para los resultados de la regresión univariado (no ajustado)**
+
+```{r}
+tabla_univ <- data_diabetes_1 |>
+  tbl_uvregression(
+    include = c(num_embarazos, glucosa_2h, presion_sanguinea, pliegue_triceps, insulina_2h,
+                imc, historial_diabetes, edad),
+    y = diabetes_5a,
+    method = glm,
+    method.args = list(family = binomial),
+    exponentiate = TRUE,
+    conf.int = TRUE,
+    hide_n = TRUE,
+    add_estimate_to_reference_rows = FALSE,
+    pvalue_fun = ~ style_pvalue(.x, digits = 3),
+    estimate_fun = ~ style_number(.x, digits = 2),
+    label = list(
+      num_embarazos ~ "Numero de embarazos",
+      glucosa_2h ~ "Glucosa cada 2 horas",
+      presion_sanguinea ~ "Presión sanguínea (mmHg)",
+      pliegue_triceps ~ "Pliegue de triceps",
+      insulina_2h ~ "Insulina cada 2 horas",
+      imc ~ "IMC",
+      historial_diabetes ~ "Historial de diabetes",
+      edad ~ "Edad (años)"
+    )
+  ) |>
+  bold_labels() |>
+  bold_p(t = 0.05) |>
+  modify_header(estimate = "**OR**", p.value = "**Valor P**")
+```
+
+**II. Tabla para los resultados de la regresión multivariable (ajustado)**
+
+```{r}
+tabla_multi <- glm(
+  diabetes_5a ~ num_embarazos + glucosa_2h + presion_sanguinea + pliegue_triceps + insulina_2h + 
+    imc + historial_diabetes + edad,
+  family = binomial(link = "logit"),
+  data = data_diabetes_1
+) |>
+  tbl_regression(
+    exponentiate = TRUE,
+    conf.int = TRUE,
+    pvalue_fun = ~ style_pvalue(.x, digits = 3),
+    estimate_fun = ~ style_number(.x, digits = 2),
+    label = list(
+      num_embarazos ~ "Numero de embarazos",
+      glucosa_2h ~ "Glucosa cada 2 horas",
+      presion_sanguinea ~ "Presión sanguínea (mmHg)",
+      pliegue_triceps ~ "Pliegue de triceps",
+      insulina_2h ~ "Insulina cada 2 horas",
+      imc ~ "IMC",
+      historial_diabetes ~ "Historial de diabetes",
+      edad ~ "Edad (años)"
+    )
+  ) |>
+  bold_labels() |>
+  bold_p(t = 0.05) |>
+  modify_header(estimate = "**OR**", p.value = "**Valor P**")
+```
+
+La tabla final la construimos usando la función `tbl_merge()`. De modo que la tabla del análisis univariado o no ajustado y multivariado o ajustado, se muestren lado a lado.
+
+```{r}
+tabla_final <- 
+  tbl_merge(
+    list(tabla_univ, tabla_multi),
+    tab_spanner = c("**Univariado**", "**Multivariado**")
+  )
+```
+
+```{r}
+tabla_final
+```
+
+**INTERPRETACIÓN:**
+
+En el modelo de regresión logística ajustado, la **glucosa a 2 horas**, el **IMC** y el **historial de diabetes** mostraron una asociación estadísticamente significativa con la presencia de diabetes a los 5 años.
+
+-   Por cada unidad adicional de glucosa a 2 horas, las probabilidades (odds) de desarrollar diabetes aumentan en un 4% (OR = 1.04; IC95%: 1.03–1.05; p \< 0.001).
+
+-   Un incremento de una unidad en el IMC se asocia con un aumento del 7% en las odds de tener diabetes (OR = 1.07; IC95%: 1.02–1.13; p = 0.010).
+
+-   Tener antecedentes familiares de diabetes se relaciona con un riesgo más de tres veces mayor de presentar diabetes (OR = 3.13; IC95%: 1.38–7.37; p = 0.008).
+
+En cambio, variables como el número de embarazos, la presión sanguínea, el pliegue del tríceps, la insulina a 2 horas y la edad no mostraron una asociación significativa tras el ajuste por las demás variables del modelo.

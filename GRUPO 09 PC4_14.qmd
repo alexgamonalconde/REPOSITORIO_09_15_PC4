@@ -1,0 +1,420 @@
+---
+title: "GRUPO09 PC4_14"
+format: html
+editor: visual
+---
+
+## Imputación de datos usando el paquete MICE
+
+PRIMERO INSTALAMOS Y CARGAMOS LOS PAQUETES QUE USAREMOS
+
+```{r}
+install.packages("mice")
+install.packages("ggmice")
+```
+
+```{r}
+library(mice)
+library(tidyverse)
+library(here)
+library(rio)
+library(ggmice)
+library(gtsummary)
+```
+
+**1.EL DATASET PARA EL SIGUIENTE EJERCICIO**
+
+Para ilustrar el proceso de imputación múltiple de datos, utilizaremos el conjunto de datos `data_diabetes`. Este dataset incluye información de 768 pacientes. Las variables registradas comprenden el número de embarazos, los niveles de glucosa a las 2 horas, la presión sanguínea, el grosor del pliegue del tríceps, los niveles de insulina a las 2 horas, el índice de masa corporal, el historial familiar de diabetes, la edad y el resultado de diabetes a 5 años (positivo o negativo). Algunos participantes presentan valores faltantes en al menos una de estas variables.
+
+**1.1 IMPORTAMOS NUESTRA DATA**
+
+```{r}
+data_diabetes <- import(here("data", "diabetes.csv"))
+```
+
+**1.2 UN VISTAZO A LOS DATOS**
+
+```{r}
+head(data_diabetes)
+```
+
+**2. REALIZANDO LA IMPUTACIÓN DE DATOS**
+
+**2.1 ¿DONDE ESTAN LOS VALORES PERDIDOS?**
+
+Es importante saber en qué variables se encuentran los datos antes de iniciar la inputación. Una forma rápida es usando la función `colSums()` es `is.na()`.
+
+```{r}
+colSums(is.na(data_diabetes))
+```
+
+Incluso mejor, podemos visualizar los datos perdidos en un mapa de calor usando la función `plot_pattern()` de **ggmice**.
+
+```{r}
+data_diabetes |>
+  select(
+      num_embarazos,
+      glucosa_2h,
+      presion_sanguinea,
+      pliegue_triceps,
+      insulina_2h,
+      imc,
+      historial_diabetes,
+      edad,
+      diabetes_5a
+    ) |>
+  ggmice::plot_pattern(
+    square = TRUE,
+    rotate = TRUE
+  )
+```
+
+El número total de valores perdidos en el dataset data_diabetes es de 652.
+
+**Las variables:**
+
+-   `glucosa_2h`: 5 valores perdidos
+
+-   `imc`: 11 valores perdidos
+
+-   `presion_sanguinea`: 35 valores perdidos
+
+-   `pliegue_triceps`: 227 valores perdidos
+
+-   `insulina_2h`: 374 valores perdidos
+
+**Pacientes quienes tienen valores perdidos:**
+
+-   `En dos variables`: Hay 8 pacientes
+
+-   `En tres variables`: Hay 6 pacientes
+
+-   `En cuatro variables`: Hay 4 pacientes
+
+**2.2 COMPARACIÓN DE PARTICIPANTES CON Y SIN VALORES PERDIDOS**
+
+Una buena práctica antes de iniciar la imputación de datos es también evaluar cómo difieren los valores de las otras variables entre el grupo de participantes con valores perdidos y el grupo sin valores perdidos. Esto es importante debido a que puede darnos pistas de si en realidad es necesaria la imputación o, dicho de otra forma, si es seguro usar el análisis de casos completos. ¿Cómo? si la distribución de las otras variables no difiere entre el grupo con valores perdidos y el grupo sin valores perdidos, entonces no es necesario la imputación de datos. Evaluemos esto en nuestro dataset para la variable `insulina_2h`, `pliegue_triceps`, `presion_sanguinea`, `imc` y `glucosa_2h`
+
+```{r}
+tabla_insulina_2h = data_diabetes |> 
+  dplyr::select(
+      num_embarazos,
+      glucosa_2h,
+      presion_sanguinea,
+      pliegue_triceps,
+      insulina_2h,
+      imc,
+      historial_diabetes,
+      edad,
+      diabetes_5a
+    ) |>
+  mutate(missing = factor(
+    is.na(insulina_2h),
+    levels = c(FALSE, TRUE),
+    labels = c("Sin valores perdidos", "Con valores perdidos")
+  )) |> 
+  tbl_summary(
+    by = missing,
+    statistic = list(
+      all_continuous()  ~ "{mean} ({sd})",
+      all_categorical() ~ "{n}    ({p}%)")
+    ) |> 
+  modify_header(label = "**Variable**",
+                all_stat_cols() ~ "**{level}**<br>N = {n} ({style_percent(p, digits=1)}%)") |> 
+  modify_caption("Características de los participantes segun valor perdido") |> 
+  bold_labels()
+
+tabla_pliegue_triceps = data_diabetes |> 
+  dplyr::select(
+      num_embarazos,
+      glucosa_2h,
+      presion_sanguinea,
+      pliegue_triceps,
+      insulina_2h,
+      imc,
+      historial_diabetes,
+      edad,
+      diabetes_5a
+    ) |>
+  mutate(missing = factor(
+    is.na(pliegue_triceps),
+    levels = c(FALSE, TRUE),
+    labels = c("Sin valores perdidos", "Con valores perdidos")
+  )) |> 
+  tbl_summary(
+    by = missing,
+    statistic = list(
+      all_continuous()  ~ "{mean} ({sd})",
+      all_categorical() ~ "{n}    ({p}%)")
+    ) |> 
+  modify_header(label = "**Variable**",
+                all_stat_cols() ~ "**{level}**<br>N = {n} ({style_percent(p, digits=1)}%)") |> 
+  modify_caption("Características de los participantes segun valor perdido") |> 
+  bold_labels()
+
+tabla_presion_sanguinea = data_diabetes |> 
+  dplyr::select(
+      num_embarazos,
+      glucosa_2h,
+      presion_sanguinea,
+      pliegue_triceps,
+      insulina_2h,
+      imc,
+      historial_diabetes,
+      edad,
+      diabetes_5a
+    ) |>
+  mutate(missing = factor(
+    is.na(presion_sanguinea),
+    levels = c(FALSE, TRUE),
+    labels = c("Sin valores perdidos", "Con valores perdidos")
+  )) |> 
+  tbl_summary(
+    by = missing,
+    statistic = list(
+      all_continuous()  ~ "{mean} ({sd})",
+      all_categorical() ~ "{n}    ({p}%)")
+    ) |> 
+  modify_header(label = "**Variable**",
+                all_stat_cols() ~ "**{level}**<br>N = {n} ({style_percent(p, digits=1)}%)") |> 
+  modify_caption("Características de los participantes segun valor perdido") |> 
+  bold_labels()
+
+tabla_imc = data_diabetes |> 
+  dplyr::select(
+      num_embarazos,
+      glucosa_2h,
+      presion_sanguinea,
+      pliegue_triceps,
+      insulina_2h,
+      imc,
+      historial_diabetes,
+      edad,
+      diabetes_5a
+    ) |>
+  mutate(missing = factor(
+    is.na(imc),
+    levels = c(FALSE, TRUE),
+    labels = c("Sin valores perdidos", "Con valores perdidos")
+  )) |> 
+  tbl_summary(
+    by = missing,
+    statistic = list(
+      all_continuous()  ~ "{mean} ({sd})",
+      all_categorical() ~ "{n}    ({p}%)")
+    ) |> 
+  modify_header(label = "**Variable**",
+                all_stat_cols() ~ "**{level}**<br>N = {n} ({style_percent(p, digits=1)}%)") |> 
+  modify_caption("Características de los participantes segun valor perdido") |> 
+  bold_labels()
+
+tabla_glucosa_2h = data_diabetes |> 
+  dplyr::select(
+      num_embarazos,
+      glucosa_2h,
+      presion_sanguinea,
+      pliegue_triceps,
+      insulina_2h,
+      imc,
+      historial_diabetes,
+      edad,
+      diabetes_5a
+    ) |>
+  mutate(missing = factor(
+    is.na(glucosa_2h),
+    levels = c(FALSE, TRUE),
+    labels = c("Sin valores perdidos", "Con valores perdidos")
+  )) |> 
+  tbl_summary(
+    by = missing,
+    statistic = list(
+      all_continuous()  ~ "{mean} ({sd})",
+      all_categorical() ~ "{n}    ({p}%)")
+    ) |> 
+  modify_header(label = "**Variable**",
+                all_stat_cols() ~ "**{level}**<br>N = {n} ({style_percent(p, digits=1)}%)") |> 
+  modify_caption("Características de los participantes segun valor perdido") |> 
+  bold_labels()
+
+tabla <- tbl_merge(
+  tbls = list(tabla_insulina_2h, tabla_pliegue_triceps, tabla_presion_sanguinea, tabla_imc, tabla_glucosa_2h),
+  tab_spanner = c("**Insulina_2h**", "**Pliegue_triceps**", "**Presion_sanguinea**", "**IMC**", "**Glucosa_2h**")
+)
+```
+
+```{r}
+tabla
+```
+
+Nota que el promedio y desviación estandard, para algunas variables, varían en la comparación del grupo con variables perdidas y completas.
+
+**2.3 ¿QUÉ VARIABLES DEBO INCLUIR EN EL PROCESO DE IMPUTACIÓN?**
+
+Debemos incluir todas las variables que se utilizarán en los análisis posteriores, incluso aquellas que no presentan valores perdidos. La razón es que el modelo de imputación debe ser *tan complejo como el análisis que se realizará posteriormente*. De lo contrario, se perderá información relevante de las demás variables. Además, aunque algunas variables no tengan valores faltantes, su inclusión en el modelo de imputación es útil porque aportan información que mejora la estimación de los valores imputados. Recuerda además que las variables categóricas deben ser de tipo factor. En esta dataset la variable categorica es `diabetes_5a` y aunque no tiene valores perdidos se incluirá en esta configuración.
+
+```{r}
+input_data =
+  data_diabetes |>
+    dplyr::select(
+      num_embarazos,
+      glucosa_2h,
+      presion_sanguinea,
+      pliegue_triceps,
+      insulina_2h,
+      imc,
+      historial_diabetes,
+      edad,
+      diabetes_5a
+    ) |> 
+  mutate(diabetes_5a = as.factor(diabetes_5a))
+```
+
+**2.4 LA FUNCIÓN `mice()` PARA IMPUTAR DATOS**
+
+Para imputar datos utilizaremos la función `mice()` del paquete del mismo nombre. Entre sus argumentos, debemos especificar:
+
+-   el número de imputaciones con `m`,
+-   una semilla (`seed`) para que los resultados sean reproducibles, y
+-   el método de imputación con `method`.
+
+Con respecto a este último argumento, emplearemos el método `"pmm"` para variables continuas y `"logreg"` para variables binarias. Para las variables que **no presentan valores perdidos**, simplemente se colocan comillas vacías (`""`).
+
+Cabe recalcar que el conjunto de datos contiene 9 variables, de las cuales 5 presentan valores perdidos, y las variables se encuentran en el siguiente orden.
+
+```{r}
+names(input_data)
+```
+
+El método de imputación la indicaremos con el argumento `method` en el mismo orden que aparecen las variables en el dataset.
+
+```{r}
+data_imputada =
+  mice(
+    input_data,
+    m = 20,
+    method = c(
+      "",
+      "pmm",
+      "pmm",
+      "pmm",
+      "pmm",
+      "pmm",
+      "",
+      "",
+      "logreg"),
+    maxit = 20,
+    seed = 3,
+    print = F
+    )
+```
+
+```{r}
+data_imputada
+```
+
+El resultado de la imputación se ha guardado en el objeto data_imputada y muestra que es un objeto de clase mids (multiply imputed dataset), el número de imputaciones (20), el método de imputación para todas las variables, y en una matriz, cuales variables han sido usadas para predecir otras.
+
+**3. ANALIZANDO LOS DATOS IMPUTADOS**
+
+Antes de realizar análisis adicionales al dataset imputado, es necesario explorar los datos imputados. Idealmente, los valores imputados deben ser plausibles en comparación con los valores observados. Podemos observar esto en un gráfico de cajas y bigotes de la distribución de los datos imputados (20) versus los datos sin imputar.
+
+**Para la variable `insulina_2h`:**
+
+```{r}
+ggmice(data_imputada, aes(x = .imp, y = insulina_2h)) +
+  geom_jitter(height = 0, width = 0.25) +
+  geom_boxplot(width = 0.5, size = 1, alpha = 0.55, outlier.shape = NA) +
+  labs(x = "Imputation number")
+```
+
+**Para la variables `pliegue_triceps`:**
+
+```{r}
+ggmice(data_imputada, aes(x = .imp, y = pliegue_triceps)) +
+  geom_jitter(height = 0, width = 0.25) +
+  geom_boxplot(width = 0.5, size = 1, alpha = 0.55, outlier.shape = NA) +
+  labs(x = "Imputation number")
+```
+
+**Para la variable `presion_sanguinea`:**
+
+```{r}
+ggmice(data_imputada, aes(x = .imp, y = presion_sanguinea)) +
+  geom_jitter(height = 0, width = 0.25) +
+  geom_boxplot(width = 0.5, size = 1, alpha = 0.55, outlier.shape = NA) +
+  labs(x = "Imputation number")
+```
+
+**Para la variable `imc`:**
+
+```{r}
+ggmice(data_imputada, aes(x = .imp, y = imc)) +
+  geom_jitter(height = 0, width = 0.25) +
+  geom_boxplot(width = 0.5, size = 1, alpha = 0.55, outlier.shape = NA) +
+  labs(x = "Imputation number")
+```
+
+**Para la variable `glucosa_2h`:**
+
+```{r}
+ggmice(data_imputada, aes(x = .imp, y = glucosa_2h)) +
+  geom_jitter(height = 0, width = 0.25) +
+  geom_boxplot(width = 0.5, size = 1, alpha = 0.55, outlier.shape = NA) +
+  labs(x = "Imputation number")
+```
+
+Con esta función, los datos observados se encuentran al inicio (azul), y los demás boxplots corresponden a los datos imputados (20). Para ambos casos, los datos imputados estan dentro del rango de los valores observados, son plausibles.
+
+Para datos categóricos, podemos crear una tabla de dos entradas comparando la distribución de la variable con datos completos e incompletos. Esto requiere primero crear la versión "long" de la data imputada.
+
+```{r}
+data_imputada_l <- complete(data_imputada, "long", include = TRUE)
+```
+
+Ahora la tabla.
+
+```{r}
+data_imputada_l <- data_imputada_l %>% 
+  mutate(imputed = .imp > 0,
+         imputed = factor(imputed,
+                          levels = c(F,T),
+                          labels = c("Observado", "Imputado")))
+
+prop.table(table(data_imputada_l$diabetes_5a,
+                 data_imputada_l$imputed),
+           margin = 2)
+```
+
+Idealmente los dos primero número luego del decimal, debe ser similares entre datos observados e imputados.
+
+**3.1 PROCEDIMIENTOS ADICIONALES LUEGO DE LA IMPUTACIÓN**
+
+El procedimiento estándar para realizar un análisis de regresión después de la imputación consiste en utilizar la función `with()` para ajustar el modelo de regresión al objeto `mids` (por ejemplo, `data_imputada`). Posteriormente, se emplea la función `pool()` para obtener los resultados combinados, como se suele presentar en la sección de resultados.
+
+No obstante, si se hace uso del paquete **gtsummary**, este y sus funciones manejan internamente el agrupamiento de las imputaciones, por lo que solo es necesario utilizar la función `with()`. A continuación, se muestra un ejemplo de regresión logística multivariada con los datos imputados, tal como se realizó anteriormente.
+
+Recuerda que es posible realizar cualquier tipo de análisis de regresión o (con procedimientos adicionales) pruebas inferenciales a partir de los datos imputados.
+
+```{r}
+
+tabla_multi <-
+  data_imputada |> 
+  with(glm(diabetes_5a ~ num_embarazos + glucosa_2h + presion_sanguinea + 
+             pliegue_triceps + insulina_2h + imc + historial_diabetes + edad,
+           family = binomial(link = "logit"))) |> 
+  tbl_regression(exponentiate = TRUE,
+                 label = list(
+                   num_embarazos ~ "Numero de embarazos",
+                   glucosa_2h ~ "Glucosa cada 2 horas",
+                   presion_sanguinea ~ "Presión sanguínea",
+                   pliegue_triceps ~ "Pliegue de triceps",
+                   insulina_2h ~ "Insulina cada 2 horas",
+                   imc ~ "Indice de masa corporal",
+                   historial_diabetes ~ "Historial de diabetes")) |>
+  bold_p(t = 0.05) |>
+  modify_header(estimate = "**OR ajustado**", p.value = "**p valor** ")
+```
+
+```{r}
+tabla_multi
+```
