@@ -1,0 +1,228 @@
+---
+title: "GRUPO09 PC4_13"
+author: "Gamonal Conde Alex, Honorato Tasayco Deiby, Delgado Campusano Giandhell, Peña Anyeli, Rincon Deyner"
+format: html
+editor: visual
+---
+
+## MÉTODOS DE AGRUPAMIENTO DE MACHINE LEARNING
+
+PRIMERO INSTALAMOS Y CARGAMOS LOS PAQUETES QUE USAREMOS
+
+```{r}
+install.packages("factoextra")
+install.packages("cluster")
+```
+
+```{r}
+library(factoextra)
+library(cluster)
+library(here)
+library(rio)
+library(tidyverse)
+```
+
+### 1. ANÁLISIS DE AGRUPAMIENTO JERÁRQUICO (HIERARCHICAL CLUSTERING) 
+
+**1.1 SOBRE EL PROBLEMA PARA ESTA DATASET**
+
+El dataset que nos ha tocado contiene información de 768 pacientes que han iniciado tratamiento de diabetes en un hospital público de Lima, Perú. El dataset incluye variables numéricas que describen diversos aspectos clínicos y metabólicos, como el número de embarazos, la concentración de glucosa a las 2 horas, la presión sanguínea, el pliegue cutáneo del tríceps, los niveles de insulina a las 2 horas, el índice de masa corporal (IMC), el historial familiar de diabetes y la edad. El objetivo de este ejercicio es aplicar el método de agrupamiento jerárquico para identificar grupos de pacientes que compartan características similares en cuanto a su estado de salud basal, lo que permitirá proponer posibles categorías de riesgo o patrones clínicos diferenciados.
+
+**1.2 EL DATASET PARA ESTA SESIÓN**
+
+Para ilustrar el proceso de análisis usaremos el dataset llamado `data_diabetes`, el cual contiene 768 observaciones con las siguientes variables: número de embarazos, concentración de glucosa a las 2 horas (mg/dL), presión sanguínea (mmHg), espesor del pliegue cutáneo del tríceps (mm), concentración de insulina a las 2 horas (μU/mL), índice de masa corporal (IMC, kg/m²), historial familiar de diabetes (sin unidad) y edad (años)
+
+**1.2.1 IMPORTAMOS NUESTRA DATA**
+
+```{r}
+data_diabetes <- import(here("data", "diabetes.csv"))
+```
+
+**1.3 PREPARACIÓN DE LOS DATOS**
+
+**1.3.1 SOLO DATOS NUMÉRICOS**
+
+Para el análisis de agrupamiento jerárquico de esta sesión usaremos solo variables numéricas. Es posible emplear variables categóricas en esta técnica, pero esto no será cubierto aquí. El código abajo elimina las variables categóricas como por ejemplo '`diabetes_5a`'. En esta dataset no hay un `id` que sea el identificador para los participantes, pero igual se ve los números de cada paciente.
+
+```{r}
+data_diabetes_1 = data_diabetes |> 
+  select(-diabetes_5a) 
+```
+
+**1.3.2 LA IMPORTANCIA DE ESTANDARIZAR**
+
+Adicionalmente, es fundamental estandarizar las variables antes de realizar el análisis de agrupamiento jerárquico. Estandarizar significa transformar las variables a una escala común para hacerlas comparables entre sí. Esto es especialmente importante porque uno de los pasos clave en el método de agrupamiento consiste en calcular distancias entre los objetos (en este caso, los pacientes) a partir de las variables clínicas incluidas en el dataset. Sin embargo, dichas variables se encuentran originalmente medidas en diferentes escalas y unidades. Por ejemplo, el número de embarazos es un conteo entero sin unidad específica, mientras que la concentración de glucosa a las 2 horas se mide en miligramos por decilitro (mg/dL), y el índice de masa corporal (IMC) se expresa en kilogramos por metro cuadrado (kg/m²). Si no se realiza una estandarización previa, las variables con valores numéricos más grandes o con unidades distintas podrían influir desproporcionadamente en el cálculo de distancias, generando agrupamientos sesgados o poco representativos de la verdadera estructura de los datos.
+
+Para ilustrar este punto: si se agrupa a los pacientes considerando simultáneamente su concentración de glucosa a las 2 horas (mg/dL) y su IMC (kg/m²), cabe preguntarse: ¿una diferencia de 10 mg/dL en glucosa es tan relevante como una diferencia de 1 kg/m² en IMC? ¿Qué variable debería tener mayor peso en la formación de los grupos? Sin una estandarización previa, estas diferencias no serían comparables, y las variables con mayor rango numérico dominarían el cálculo de distancias, afectando los resultados de la clasificación. Por ello, es imprescindible aplicar una función de estandarización, como `scale()` en R, que transforma las variables para que tengan media cero y desviación estándar uno, permitiendo así que todas contribuyan equitativamente al análisis.
+
+```{r}
+data_diabetes_escalado = scale(data_diabetes_1) 
+```
+
+Un vistazo a los datos antes del escalamiento:
+
+```{r}
+head(data_diabetes_1)
+```
+
+y un vistazo después del escalamiento:
+
+```{r}
+head(data_diabetes_escalado)
+```
+
+**1.4 CÁLCULO DE DISTANCIAS**
+
+Dado que uno de los pasos es encontrar "cosas similares", necesitamos definir "similar" en términos de distancia. Esta distancia la calcularemos para cada par posible de objetos (pacientes) en nuestro dataset. Por ejemplo, si tuviéramos a los pacientes A, B y C, las distancias se calcularían para A vs B; A vs C; y B vs C. En R, podemos utilizar la función `dist()` para calcular la distancia entre cada par de objetos en un conjunto de datos. El resultado de este cálculo se conoce como matriz de distancias o de disimilitud.
+
+```{r}
+dist_data_diabetes <- dist(data_diabetes_escalado, method = "euclidean")
+```
+
+**1.4.1 VISUALIZANDO LAS DISTANCIAS EUCLIDIANAS CON UN MAPA DE CALOR**
+
+```{r}
+fviz_dist(dist_data_diabetes)
+```
+
+El nivel del color en este gráfico es proporcional al valor de disimilitud entre observaciones (pacientes). Por ejemplo, un color rojo puro indica una distancia con valor de 0 entre las observaciones. Nota que la línea diagonal corresponde al intercepto de las mismas observaciones. Las observaciones que pertenecen a un mismo cluster (grupo) caen en orden consecutivo. Una conclusión del gráfico de abajo es que hay grupos que comparten similaridades, dado que observamos bloques de color.
+
+**1.5 EL MÉTODO DE AGRUPAMIENTO: FUNCIÓN DE ENLACE (LINKAGE)**
+
+El agrupamiento jerárquico es un método que empieza agrupando las observaciones más parecidas entre sí, por lo que es fácil de usar al comienzo. Sin embargo, no basta con calcular las distancias entre todos los pares de objetos. Una vez que se forma un nuevo grupo (clúster), hay que decidir cómo medir la distancia entre ese grupo y los demás puntos o grupos ya existentes. Hay varias formas de hacerlo, y cada una genera un tipo diferente de agrupamiento jerárquico. La función de enlace (linkage) toma la información de distancias devuelta por la función `dist()` y agrupa pares de objetos en clústeres basándose en su similitud. Luego, estos nuevos clústeres formados se enlazan entre sí para crear clústeres más grandes. Este proceso se repite hasta que todos los objetos del conjunto de datos quedan agrupados en un único árbol jerárquico.
+
+Hay varios métodos para realizar este agrupamiento, incluyendo ***Enlace máximo o completo*****, *Enlace mínimo o simple*, *Enlace de la media o promedio*, *Enlace de centroide* y el *Método de varianza mínima de Ward*.** No entraremos en detalle sobre cómo funcionan estos métodos, pero para este contexto, el método de varianza mínima de Ward o el método máximo son preferidos. En este ejemplo, usamos el método de varianza mínima de Ward.
+
+```{r}
+dist_link_data_diabetes <- hclust(d = dist_data_diabetes, method = "ward.D2")
+```
+
+**1.6 DENDROGRAMAS PARA LA VISUALIZACIÓN DE PATRONES**
+
+Los dendrogramas es una representación gráfica del árbol jerárquico generado por la función `hclust()`.
+
+```{r}
+fviz_dend(dist_link_data_diabetes, cex = 0.7)
+```
+
+Un dendrograma es como un árbol genealógico para los clústeres (grupos). Esta muestra cómo los puntos de datos individuales o los grupos de datos se van uniendo entre sí. En la parte inferior, cada punto de datos se representa como un grupo independiente, y a medida que se asciende, los grupos similares se combinan. Cuanto más bajo es el punto de unión, mayor es la similitud entre los grupos.
+
+**1.8 ¿CUÁNTOS GRUPOS SE FORMARON EN EL DENDROGRAMA?**
+
+Uno de los problemas con la agrupación jerárquica es que no nos dice cuántos grupos hay ni dónde cortar el dendrograma para formar grupos. Aquí entra en juego la decisión del investigador a partir de analizar el dendrograma. Para nuestro dendrograma, es claro que el dendrograma muestra tres grupos. En el código de abajo, el argumento k = 3 define el número de clusters.
+
+```{r}
+fviz_dend(dist_link_data_diabetes, 
+          k = 3,
+          cex = 0.5,
+          k_colors = c("#2E9FDF", "#E7B800", "#FC4E07"),
+          color_labels_by_k = TRUE, 
+          rect = TRUE)
+```
+
+### 2. AGRUPAMIENTO CON EL ALGORITMO K-MEANS 
+
+El método de agrupamiento (usando el algoritmo) K-means es la técnica de *machine learning* más utilizada para dividir un conjunto de datos en un número determinado de **k** grupos (es decir, **k** clústeres), donde **k** representa el número de grupos predefinido por el investigador. Esto contrasta con la técnica anterior, dado que aquí sí iniciamos con un número de grupos predefinido cuya idoneidad puede ser evaluada.
+
+En detalle, esta técnica clasifica a los objetos (pacientes) del dataset en múltiples grupos, de manera que los objetos dentro de un mismo clúster sean lo más similares posible entre sí (*alta similitud intragrupo*), mientras que los objetos de diferentes clústeres sean lo más diferentes posible entre ellos (*baja similitud intergrupo*). En el agrupamiento K-means, cada clúster se representa por su centro (*centroide*), que corresponde al promedio de los puntos asignados a dicho clúster.
+
+### Aquí cómo funciona el algoritmo de K-means:
+
+1.  **Indicar cuántos grupos (clústeres) se quieren formar.** Por ejemplo, si se desea dividir a los pacientes en 3 grupos según sus características clínicas (como glucosa, presión sanguínea, insulina, IMC, etc.), entonces K = 3.
+
+2.  **Elegir aleatoriamente K casos del conjunto de datos como centros iniciales.** Por ejemplo, R selecciona al azar 3 pacientes cuyas características servirán como punto de partida para definir los grupos.
+
+3.  **Asignar cada paciente al grupo cuyo centro esté más cerca**, usando la distancia euclidiana. Es como medir con una regla cuál centroide (paciente promedio) está más próximo a cada paciente en función de todas sus variables clínicas.
+
+4.  **Calcular un nuevo centro para cada grupo.** Es decir, calcular el promedio de todas las variables de los pacientes que quedaron en ese grupo. Por ejemplo, si en el grupo 1 quedaron 40 pacientes, el nuevo centroide será el promedio de la glucosa, insulina, IMC, presión sanguínea, etc., de esos 40 pacientes. Este centroide es un conjunto de valores (uno por cada variable).
+
+5.   **Repetir los pasos 3 y 4** hasta que los pacientes dejen de cambiar de grupo o hasta alcanzar un número máximo de repeticiones (en R, por defecto son 10 repeticiones). Esto permitirá que los grupos finales sean estables.
+
+**2.1 EL PROBLEMA Y DATASET PARA ESTE EJERCICIO**
+
+Usaremos el mismo dataset y el mismo problema que el que empleamos en el ejercicio anterior (para Agrupamiento Jerárquico).
+
+**2.2 ESTIMANDO EL NÚMERO ÓPTIMO DE CULSTERS**
+
+Como indiqué arriba, el método de agrupamiento K-means requiere que el usuario especifique el número de clústeres (grupos) a generar. Una pregunta fundamental es: ¿cómo elegir el número adecuado de clústeres esperados (**k**)?
+
+Aquí muestro una solución sencilla y popular: realizar el agrupamiento K-means probando diferentes valores de **k** (número de clústeres). Luego, se grafica la suma de cuadrados dentro de los clústeres (*within-cluster sum of squares*, WSS) en función del número de clústeres. En R, podemos usar la función `fviz_nbclust()` del paquete `factoextra` para estimar el número óptimo de clústeres.
+
+Primero escalamos los datos:
+
+```{r}
+data_diabetes_escalado = scale(data_diabetes_1)
+```
+
+Ahora como nuestra dataset tiene NA y eso no nos dejaría hacer el gráfico, hacemos lo siguiente:
+
+```{r}
+data_diabetes_escalado_clean <- na.omit(data_diabetes_escalado)
+```
+
+Ahora graficamos la suma de cuadrados dentro de los gráficos:
+
+```{r}
+fviz_nbclust(data_diabetes_escalado_clean, kmeans, nstart = 25, method = "wss") + 
+  geom_vline(xintercept = 3, linetype = 2)
+```
+
+El punto donde la curva forma una "rodilla" o quiebre suele indicar el número óptimo de clústeres. Para nuestro gráfico, es en el número de cluster 3.
+
+**2.3 CÁLCULO DEL AGRUPAMIENTO K-MEANS**
+
+Dado que el resultado final del agrupamiento k-means es sensible a las asignaciones aleatorias iniciales, se especifica el argumento `nstart = 25`. Esto significa que R intentará 25 asignaciones aleatorias diferentes y seleccionará la mejor solución, es decir, aquella con la menor variación dentro de los clústeres. El valor predeterminado de `nstart` en R es 1. Sin embargo, se recomienda ampliamente utilizar un valor alto, como 25 o 50, para obtener un resultado más estable y confiable. El valor empleado aquí, fue usado para determinar el número de clústeres óptimos.
+
+```{r}
+set.seed(123)
+km_res <- kmeans(data_diabetes_escalado_clean, 3, nstart = 25)
+```
+
+```{r}
+km_res
+```
+
+El resultado muestra dos cosas:
+
+1.  **Las medias o centros de los clústeres** (*Cluster means*): una matriz cuyas filas corresponden al número de clúster (1 a 3) y cuyas columnas representan las variables.
+
+2.  **Un vector de asignación de clúster** (*Clustering vector*): un vector de números enteros (de 1 a 3) que indica a qué clúster ha sido asignado cada punto (para nuestro dataset, cada paciente).
+
+**2.4 VISUALIZACIÓN DE LOS CLÚSTERES K-MEANS**
+
+Al igual que el análisis anterior, los datos se pueden representar en un gráfico de dispersión, coloreando cada observación o paciente según el clúster al que pertenece. El problema es que los datos contienen más de dos variables, y surge la pregunta de qué variables elegir para representar en los ejes X e Y del gráfico. Una solución es reducir la cantidad de dimensiones aplicando un algoritmo de reducción de dimensiones, como el Análisis de Componentes Principales (PCA). El PCA transforma las 52 variables originales en dos nuevas variables (componentes principales) que pueden usarse para construir el gráfico.
+
+La función `fviz_cluster()` del paquete factoextra se puede usar para visualizar los clústeres generados por k-means. Esta función toma como argumentos los resultados del k-means y los datos originales (data_diabetes_escalado_clean).
+
+```{r}
+fviz_cluster(
+  km_res,
+  data = data_diabetes_escalado_clean,
+  palette = c("#2E9FDF", "#E7B800", "#FC4E07"),
+  ellipse.type = "euclid",
+  repel = TRUE,
+  ggtheme = theme_minimal()
+)
+```
+
+**2.4.1 ¿CÓMO INTERPRETAR?**
+
+En el gráfico resultante, los participantes (las observaciones) se representan como puntos. La técnica ha "creado" dimensiones, de las cuales dos de las más importantes son consideradas en el gráfico. El uso aquí del PCA (Análisis de Componentes Principales) es poder clasificar diferentes "cosas" (en este caso, pacientes) en grupos según características clínicas cuantitativas, como número de embarazos, glucosa, presión sanguínea, insulina, IMC, historial de diabetes y edad, de una manera que genere el menor error posible (en términos de separar correctamente los grupos).
+
+Además de los tres grupos formados , nuestro gráfico aquí al igual que en el agrupamiento jerárquico, **no nos dice más por sí solo**. Es necesario realizar análisis adicionales para evaluar la utilidad de estos clústeres, como por ejemplo:
+
+-   Evaluar si hay diferencias en el riesgo de complicaciones metabólicas o cardiovasculares entre estos grupos.
+
+-   Analizar cómo varían en promedio ciertos parámetros clínicos entre clústeres, por ejemplo: si los niveles de glucosa, IMC o presión arterial son significativamente distintos entre ellos.
+
+-   Explorar si un grupo agrupa mayoritariamente a pacientes de mayor edad o con mayor número de embarazos previos.
+
+Este tipo de análisis posteriores permiten interpretar clínicamente los patrones hallados y darles sentido en el contexto de la diabetes o del control metabólico
+
+**3. CONCLUSIÓN:**
+
+A través del uso de técnicas de análisis de agrupamiento no supervisado como el **agrupamiento jerárquico** y el **algoritmo de K-means**, hemos identificado patrones estructurados dentro del conjunto de datos clínicos de pacientes con diagnóstico reciente de diabetes. Estos métodos permitieron clasificar a los pacientes en tres grupos principales que comparten características clínicas similares en variables como glucosa, presión arterial, IMC, insulina, edad, entre otras.
+
+En ambos enfoques, la estandarización previa de las variables fue esencial para evitar que las diferencias en unidades o escalas distorsionen el cálculo de distancias. Los resultados mostraron que existen subgrupos bien diferenciados en la muestra, lo cual sugiere que los pacientes podrían presentar **diferentes perfiles metabólicos y clínicos** desde el inicio de su tratamiento.
+
+Si bien los métodos aplicados nos permiten visualizar y detectar agrupamientos naturales en los datos, **no ofrecen directamente una interpretación clínica o pronóstica de estos grupos**. Para ello, se requiere un análisis posterior, como comparar la evolución clínica o las tasas de complicaciones entre los clústeres. Por ejemplo, sería relevante explorar si alguno de los grupos identificados muestra un peor control glucémico, mayor resistencia a la insulina, o mayor prevalencia de obesidad o hipertensión, lo cual permitiría desarrollar estrategias de manejo más personalizadas.
